@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>meetGRAG — 知識圖譜</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    /* ── 基礎 ────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── 頂部工具列 ─────────────────────────────────────────── */
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    #toolbar h1 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #818cf8;
+      white-space: nowrap;
+    }
+
+    #search-box {
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid #3d4268;
+      background: #252840;
+      color: #e2e8f0;
+      font-size: 13px;
+      width: 180px;
+      outline: none;
+    }
+    #search-box:focus { border-color: #818cf8; }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #94a3b8;
+      flex-wrap: wrap;
+    }
+    .filter-group span { font-weight: 600; color: #64748b; }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1.5px solid transparent;
+      user-select: none;
+      transition: opacity .15s;
+    }
+    .chip.off { opacity: .35; }
+    .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    #reset-btn {
+      margin-left: auto;
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px solid #3d4268;
+      background: #252840;
+      color: #94a3b8;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #reset-btn:hover { background: #2e3358; color: #e2e8f0; }
+
+    #stats {
+      font-size: 11px;
+      color: #4a5568;
+      white-space: nowrap;
+    }
+
+    /* ── 메인 영역 ───────────────────────────────────────────── */
+    #main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── SVG canvas ─────────────────────────────────────────── */
+    #canvas {
+      flex: 1;
+      cursor: grab;
+    }
+    #canvas:active { cursor: grabbing; }
+
+    .link {
+      stroke: #3d4268;
+      stroke-opacity: .6;
+    }
+    .link.highlighted { stroke: #f59e0b; stroke-opacity: 1; }
+
+    .node circle {
+      stroke: #1a1d27;
+      stroke-width: 1.5px;
+      cursor: pointer;
+      transition: stroke .15s;
+    }
+    .node circle:hover { stroke: #fff; stroke-width: 2px; }
+    .node.dimmed circle { opacity: .2; }
+    .node.dimmed text  { opacity: .1; }
+
+    .node text {
+      font-size: 9px;
+      fill: #94a3b8;
+      pointer-events: none;
+      text-anchor: middle;
+      dominant-baseline: hanging;
+    }
+
+    /* ── 側邊資訊面板 ───────────────────────────────────────── */
+    #info-panel {
+      width: 260px;
+      background: #1a1d27;
+      border-left: 1px solid #2d3148;
+      padding: 16px;
+      overflow-y: auto;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #info-panel h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #818cf8;
+      border-bottom: 1px solid #2d3148;
+      padding-bottom: 8px;
+    }
+
+    .info-empty {
+      font-size: 12px;
+      color: #4a5568;
+      text-align: center;
+      margin-top: 40px;
+    }
+
+    .info-section { display: flex; flex-direction: column; gap: 6px; }
+
+    .info-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #4a5568;
+      font-weight: 600;
+    }
+
+    .info-value {
+      font-size: 12px;
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .neighbor-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .neighbor-list li {
+      font-size: 11px;
+      color: #94a3b8;
+      padding: 3px 6px;
+      border-radius: 4px;
+      background: #252840;
+      cursor: pointer;
+    }
+    .neighbor-list li:hover { background: #2e3358; color: #e2e8f0; }
+
+    /* ── Tooltip ─────────────────────────────────────────────── */
+    #tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: #1a1d27;
+      border: 1px solid #3d4268;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #e2e8f0;
+      max-width: 240px;
+      line-height: 1.5;
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+      opacity: 0;
+      transition: opacity .1s;
+      z-index: 10;
+    }
+    #tooltip.visible { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- 工具列 -->
+<div id="toolbar">
+  <h1>meetGRAG 知識圖譜</h1>
+  <input id="search-box" type="text" placeholder="搜尋實體..." />
+  <div class="filter-group">
+    <span>類型：</span>
+    <div id="type-filters"></div>
+  </div>
+  <div id="stats"></div>
+  <button id="reset-btn">重置視角</button>
+</div>
+
+<!-- 主區域 -->
+<div id="main">
+  <svg id="canvas"></svg>
+
+  <!-- 右側資訊面板 -->
+  <div id="info-panel">
+    <h2>節點資訊</h2>
+    <p class="info-empty">點擊節點查看詳情</p>
+  </div>
+</div>
+
+<!-- Tooltip -->
+<div id="tooltip"></div>
+
+<script>
+const API = 'http://localhost:8000/api/v1/graph';
+
+// ── 色彩方案 ──────────────────────────────────────────────────────────────────
+const TYPE_COLORS = {
+  PERSON:        '#60a5fa',
+  ORGANIZATION:  '#34d399',
+  WORKING_GROUP: '#a78bfa',
+  TECHNOLOGY:    '#f97316',
+  RFC:           '#facc15',
+  PROTOCOL:      '#fb7185',
+  EVENT:         '#22d3ee',
+  CONCEPT:       '#e879f9',
+  DOCUMENT:      '#fbbf24',
+  ROLE:          '#4ade80',
+  COMMITTEE:     '#818cf8',
+  SUBCOMMITTEE:  '#a5b4fc',
+  NETWORK:       '#2dd4bf',
+  APPLICATION:   '#f472b6',
+  WORKSHOP:      '#fb923c',
+  CONTACT:       '#94a3b8',
+  OTHER:         '#64748b',
+  UNKNOWN:       '#6b7280',
+};
+
+function typeColor(type) {
+  return TYPE_COLORS[type?.toUpperCase()] ?? TYPE_COLORS.UNKNOWN;
+}
+
+// ── 社群色盤（用於節點外框） ─────────────────────────────────────────────────
+const COMM_PALETTE = [
+  '#4f46e5','#0891b2','#059669','#d97706',
+  '#dc2626','#7c3aed','#db2777','#0284c7',
+];
+
+// ── 取得圖譜資料 ──────────────────────────────────────────────────────────────
+async function fetchGraph() {
+  const res = await fetch(API);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ── 主程式 ────────────────────────────────────────────────────────────────────
+async function main() {
+  let data;
+  try {
+    data = await fetchGraph();
+  } catch (e) {
+    document.getElementById('info-panel').innerHTML =
+      `<h2>錯誤</h2><p class="info-empty">無法連線至 API：${e.message}<br/>請確認 uvicorn 已啟動</p>`;
+    return;
+  }
+
+  const { nodes, links, communities } = data;
+
+  // community id → color index
+  const commColorMap = {};
+  communities.forEach((c, i) => {
+    commColorMap[c.id] = COMM_PALETTE[i % COMM_PALETTE.length];
+  });
+
+  // 建立鄰居查找表
+  const neighborMap = {};
+  nodes.forEach(n => { neighborMap[n.id] = []; });
+  links.forEach(l => {
+    if (neighborMap[l.source]) neighborMap[l.source].push({ id: l.target,  desc: l.description });
+    if (neighborMap[l.target]) neighborMap[l.target].push({ id: l.source, desc: l.description });
+  });
+
+  // 所有出現的類型
+  const allTypes = [...new Set(nodes.map(n => n.type))].sort();
+
+  // ── 類型過濾器 Chips ───────────────────────────────────────────────────────
+  const activeTypes = new Set(allTypes);
+  const filterDiv = document.getElementById('type-filters');
+  allTypes.forEach(type => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `<span class="dot" style="background:${typeColor(type)}"></span>${type}`;
+    chip.title = type;
+    chip.dataset.type = type;
+    chip.addEventListener('click', () => {
+      if (activeTypes.has(type)) { activeTypes.delete(type); chip.classList.add('off'); }
+      else                       { activeTypes.add(type);    chip.classList.remove('off'); }
+      applyFilters();
+    });
+    filterDiv.appendChild(chip);
+  });
+
+  // ── SVG 設定 ───────────────────────────────────────────────────────────────
+  const svg = d3.select('#canvas');
+  const width  = () => svg.node().clientWidth;
+  const height = () => svg.node().clientHeight;
+
+  const g = svg.append('g');
+
+  // Zoom
+  const zoom = d3.zoom()
+    .scaleExtent([0.1, 8])
+    .on('zoom', e => g.attr('transform', e.transform));
+  svg.call(zoom);
+
+  document.getElementById('reset-btn').addEventListener('click', () => {
+    svg.transition().duration(600)
+      .call(zoom.transform, d3.zoomIdentity.translate(width()/2, height()/2).scale(0.9));
+  });
+
+  // ── Force Simulation ───────────────────────────────────────────────────────
+  const simulation = d3.forceSimulation(nodes)
+    .force('link',   d3.forceLink(links).id(d => d.id).distance(80).strength(0.4))
+    .force('charge', d3.forceManyBody().strength(-220))
+    .force('center', d3.forceCenter(width()/2, height()/2))
+    .force('collide', d3.forceCollide(18));
+
+  // ── 邊 ─────────────────────────────────────────────────────────────────────
+  const linkSel = g.append('g').attr('class','links')
+    .selectAll('line')
+    .data(links)
+    .join('line')
+    .attr('class','link')
+    .attr('stroke-width', d => Math.sqrt(d.weight) * 1.2);
+
+  // ── 節點 ───────────────────────────────────────────────────────────────────
+  const nodeSel = g.append('g').attr('class','nodes')
+    .selectAll('g')
+    .data(nodes)
+    .join('g')
+    .attr('class','node')
+    .call(
+      d3.drag()
+        .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+        .on('end',   (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  // 節點圓形：半徑依連結數
+  const degreeMap = {};
+  nodes.forEach(n => { degreeMap[n.id] = 0; });
+  links.forEach(l => { degreeMap[l.source.id ?? l.source]++; degreeMap[l.target.id ?? l.target]++; });
+
+  nodeSel.append('circle')
+    .attr('r', d => 6 + Math.sqrt(degreeMap[d.id] ?? 0) * 2.5)
+    .attr('fill', d => typeColor(d.type))
+    .attr('stroke', d => commColorMap[d.community_id] ?? '#1a1d27')
+    .attr('stroke-width', d => d.community_id ? 2.5 : 1.5);
+
+  // 節點標籤
+  nodeSel.append('text')
+    .attr('dy', d => 7 + Math.sqrt(degreeMap[d.id] ?? 0) * 2.5)
+    .text(d => d.id.length > 18 ? d.id.slice(0, 16) + '…' : d.id);
+
+  // ── Tick ───────────────────────────────────────────────────────────────────
+  simulation.on('tick', () => {
+    linkSel
+      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+
+  // 初始視角置中
+  setTimeout(() => {
+    svg.call(zoom.transform, d3.zoomIdentity.translate(width()/2, height()/2).scale(0.85));
+  }, 600);
+
+  // ── Tooltip ────────────────────────────────────────────────────────────────
+  const tooltip = document.getElementById('tooltip');
+
+  nodeSel
+    .on('mousemove', (e, d) => {
+      tooltip.innerHTML = `<b>${d.id}</b> <span style="color:${typeColor(d.type)}">${d.type}</span>`
+        + (d.description ? `<br/><span style="color:#94a3b8">${d.description.slice(0,100)}${d.description.length>100?'…':''}</span>` : '');
+      tooltip.classList.add('visible');
+      tooltip.style.left = (e.clientX + 14) + 'px';
+      tooltip.style.top  = (e.clientY - 10) + 'px';
+    })
+    .on('mouseleave', () => tooltip.classList.remove('visible'));
+
+  linkSel
+    .on('mousemove', (e, d) => {
+      tooltip.innerHTML = `<b>${d.source.id ?? d.source} → ${d.target.id ?? d.target}</b>`
+        + `<br/>weight: ${d.weight.toFixed(1)}`
+        + (d.description ? `<br/><span style="color:#94a3b8">${d.description.slice(0,80)}…</span>` : '');
+      tooltip.classList.add('visible');
+      tooltip.style.left = (e.clientX + 14) + 'px';
+      tooltip.style.top  = (e.clientY - 10) + 'px';
+    })
+    .on('mouseleave', () => tooltip.classList.remove('visible'));
+
+  // ── 點擊節點 → 資訊面板 + 高亮 ─────────────────────────────────────────────
+  let selectedId = null;
+
+  function selectNode(nodeId) {
+    selectedId = nodeId;
+    const d = nodes.find(n => n.id === nodeId);
+    if (!d) return;
+
+    const neighbors = new Set([nodeId, ...neighborMap[nodeId].map(n => n.id)]);
+    nodeSel.classed('dimmed', n => !neighbors.has(n.id));
+    linkSel.classed('highlighted', l =>
+      (l.source.id ?? l.source) === nodeId || (l.target.id ?? l.target) === nodeId
+    );
+
+    const comm = communities.find(c => c.id === d.community_id);
+    const panel = document.getElementById('info-panel');
+    panel.innerHTML = `
+      <h2>節點資訊</h2>
+      <div class="info-section">
+        <div class="info-label">名稱</div>
+        <div class="info-value">${d.id}</div>
+      </div>
+      <div class="info-section">
+        <div class="info-label">類型</div>
+        <div class="info-value">
+          <span class="badge" style="background:${typeColor(d.type)}22;color:${typeColor(d.type)}">${d.type}</span>
+        </div>
+      </div>
+      ${d.description ? `
+      <div class="info-section">
+        <div class="info-label">描述</div>
+        <div class="info-value">${d.description}</div>
+      </div>` : ''}
+      ${comm ? `
+      <div class="info-section">
+        <div class="info-label">所屬社群</div>
+        <div class="info-value" style="color:${commColorMap[comm.id]}">${comm.title}</div>
+      </div>` : ''}
+      <div class="info-section">
+        <div class="info-label">關聯節點（${neighborMap[nodeId].length}）</div>
+        <ul class="neighbor-list">
+          ${neighborMap[nodeId].map(n =>
+            `<li data-id="${n.id}">${n.id}</li>`
+          ).join('')}
+        </ul>
+      </div>
+    `;
+
+    panel.querySelectorAll('.neighbor-list li').forEach(li => {
+      li.addEventListener('click', () => selectNode(li.dataset.id));
+    });
+  }
+
+  nodeSel.on('click', (e, d) => {
+    e.stopPropagation();
+    selectNode(d.id);
+  });
+
+  svg.on('click', () => {
+    selectedId = null;
+    nodeSel.classed('dimmed', false);
+    linkSel.classed('highlighted', false);
+    document.getElementById('info-panel').innerHTML =
+      '<h2>節點資訊</h2><p class="info-empty">點擊節點查看詳情</p>';
+  });
+
+  // ── 搜尋 ────────────────────────────────────────────────────────────────────
+  document.getElementById('search-box').addEventListener('input', e => {
+    const q = e.target.value.trim().toLowerCase();
+    if (!q) {
+      nodeSel.classed('dimmed', false);
+      return;
+    }
+    nodeSel.classed('dimmed', d => !d.id.toLowerCase().includes(q));
+  });
+
+  // ── 類型過濾 ────────────────────────────────────────────────────────────────
+  function applyFilters() {
+    nodeSel.classed('dimmed', d => !activeTypes.has(d.type));
+    linkSel.style('display', l => {
+      const sType = nodes.find(n => n.id === (l.source.id ?? l.source))?.type;
+      const tType = nodes.find(n => n.id === (l.target.id ?? l.target))?.type;
+      return (activeTypes.has(sType) && activeTypes.has(tType)) ? null : 'none';
+    });
+  }
+
+  // ── 統計 ────────────────────────────────────────────────────────────────────
+  document.getElementById('stats').textContent =
+    `${nodes.length} 節點 · ${links.length} 關係 · ${communities.length} 社群`;
+}
+
+main();
+</script>
+</body>
+</html>
