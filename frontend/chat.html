@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>meetGRAG — 知識問答</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --surface2:  #252840;
+      --border:    #2d3148;
+      --border2:   #3d4268;
+      --accent:    #818cf8;
+      --accent2:   #6366f1;
+      --text:      #e2e8f0;
+      --muted:     #94a3b8;
+      --dim:       #64748b;
+      --success:   #34d399;
+      --warn:      #fbbf24;
+      --danger:    #f87171;
+      --user-bg:   #312e81;
+      --bot-bg:    #1e293b;
+      --radius:    10px;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── 頂部標題列 ─────────────────────────────────────────────── */
+    #header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #header h1 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: .5px;
+    }
+    #header .subtitle {
+      font-size: 12px;
+      color: var(--dim);
+    }
+    #status-badge {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    #status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--dim);
+      transition: background .3s;
+    }
+    #status-dot.ok  { background: var(--success); }
+    #status-dot.err { background: var(--danger); }
+
+    /* ── 主體佈局：左=對話，右=回答+子圖 ─────────────────────────── */
+    #main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── 左側對話區 ─────────────────────────────────────────────── */
+    #chat-panel {
+      width: 380px;
+      min-width: 280px;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #messages::-webkit-scrollbar { width: 5px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+    .msg-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    .msg-row.user { flex-direction: row-reverse; }
+
+    .avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .avatar.user { background: var(--accent2); color: #fff; }
+    .avatar.bot  { background: var(--surface2); color: var(--accent); border: 1px solid var(--border2); }
+
+    .bubble {
+      max-width: 82%;
+      padding: 9px 13px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+    .bubble.user {
+      background: var(--user-bg);
+      color: #c7d2fe;
+      border-bottom-right-radius: 3px;
+    }
+    .bubble.bot {
+      background: var(--bot-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 3px;
+    }
+    .bubble.bot .ref-tag {
+      display: inline-block;
+      background: var(--accent2);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      border-radius: 3px;
+      padding: 1px 4px;
+      margin: 0 1px;
+      cursor: pointer;
+      vertical-align: super;
+      line-height: 1;
+      transition: background .15s;
+    }
+    .bubble.bot .ref-tag:hover { background: var(--accent); }
+
+    .bubble .fallback { color: var(--warn); font-style: italic; }
+
+    .msg-meta {
+      font-size: 10px;
+      color: var(--dim);
+      margin-top: 3px;
+      text-align: right;
+    }
+    .msg-row.user .msg-meta { text-align: right; }
+    .msg-row.bot  .msg-meta { text-align: left;  padding-left: 36px; }
+
+    /* 打字中動畫 */
+    .typing-dots span {
+      display: inline-block;
+      width: 6px; height: 6px;
+      margin: 0 2px;
+      border-radius: 50%;
+      background: var(--muted);
+      animation: bounce 1.2s infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: .2s; }
+    .typing-dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40%            { transform: translateY(-6px); }
+    }
+
+    /* ── 輸入區 ─────────────────────────────────────────────────── */
+    #input-area {
+      padding: 12px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    #query-input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 8px 11px;
+      resize: none;
+      outline: none;
+      max-height: 100px;
+      line-height: 1.5;
+      font-family: inherit;
+      transition: border-color .2s;
+    }
+    #query-input:focus { border-color: var(--accent); }
+    #query-input::placeholder { color: var(--dim); }
+
+    #send-btn {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: var(--accent2);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background .15s, transform .1s;
+    }
+    #send-btn:hover:not(:disabled) { background: var(--accent); }
+    #send-btn:active:not(:disabled) { transform: scale(.93); }
+    #send-btn:disabled { opacity: .4; cursor: not-allowed; }
+    #send-btn svg { width: 16px; height: 16px; fill: #fff; }
+
+    /* ── 右側詳情區 ─────────────────────────────────────────────── */
+    #detail-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* 詳情：答案 + 引用 ──────────────────────────────────────────── */
+    #answer-section {
+      height: 42%;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 8px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--dim);
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .section-header .badge {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 1px 7px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    #answer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+    #answer-body::-webkit-scrollbar { width: 5px; }
+    #answer-body::-webkit-scrollbar-track { background: transparent; }
+    #answer-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+    .answer-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--dim);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .answer-text { color: var(--text); margin-bottom: 16px; }
+    .answer-text .ref-tag {
+      display: inline-block;
+      background: var(--accent2);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      border-radius: 3px;
+      padding: 1px 5px;
+      margin: 0 1px;
+      cursor: pointer;
+      vertical-align: super;
+      line-height: 1;
+      transition: background .15s;
+    }
+    .answer-text .ref-tag:hover { background: var(--accent); }
+
+    .citations-list { display: flex; flex-direction: column; gap: 8px; }
+    .citation-card {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+      border-left: 3px solid var(--accent2);
+      transition: border-color .2s;
+    }
+    .citation-card:hover { border-left-color: var(--accent); }
+    .citation-card.active { border-left-color: var(--success); }
+
+    .citation-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px; height: 18px;
+      background: var(--accent2);
+      color: #fff;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 700;
+      margin-right: 6px;
+      flex-shrink: 0;
+    }
+    .citation-title {
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .type-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 8px;
+      font-weight: 500;
+    }
+    .type-badge.text_unit  { background: #1e3a5f; color: #7dd3fc; }
+    .type-badge.community  { background: #2d1f52; color: #c4b5fd; }
+
+    .source-ref {
+      margin-top: 5px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .source-ref .video-name { color: var(--accent); font-size: 11px; }
+    .ts-btn {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      padding: 2px 7px;
+      cursor: pointer;
+      transition: color .15s, border-color .15s;
+    }
+    .ts-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    .usage-row {
+      font-size: 11px;
+      color: var(--dim);
+      margin-top: 12px;
+      display: flex;
+      gap: 12px;
+    }
+    .usage-row span { color: var(--muted); }
+
+    /* ── 子圖區 ─────────────────────────────────────────────────── */
+    #graph-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #graph-toolbar {
+      padding: 6px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+      font-size: 11px;
+      color: var(--dim);
+    }
+    #node-count { color: var(--muted); }
+    #graph-legend {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      color: var(--dim);
+    }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    #graph-canvas {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    #graph-canvas svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .graph-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--dim);
+      font-size: 13px;
+      pointer-events: none;
+    }
+
+    /* ── Tooltip ─────────────────────────────────────────────────── */
+    #tooltip {
+      position: fixed;
+      background: #1e2235;
+      border: 1px solid var(--border2);
+      border-radius: 7px;
+      padding: 8px 11px;
+      font-size: 12px;
+      color: var(--text);
+      max-width: 280px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .15s;
+      z-index: 1000;
+      line-height: 1.5;
+    }
+    #tooltip.show { opacity: 1; }
+    #tooltip .tt-name { font-weight: 700; color: var(--accent); }
+    #tooltip .tt-type { font-size: 10px; color: var(--dim); margin-bottom: 4px; }
+    #tooltip .tt-desc { color: var(--muted); }
+
+    /* ── 節點訊息彈窗 ─────────────────────────────────────────────── */
+    #node-panel {
+      position: absolute;
+      bottom: 14px; right: 14px;
+      width: 240px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      padding: 12px;
+      font-size: 12px;
+      display: none;
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(0,0,0,.4);
+    }
+    #node-panel.show { display: block; }
+    #node-panel .np-name {
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 13px;
+      margin-bottom: 2px;
+    }
+    #node-panel .np-type {
+      font-size: 10px;
+      color: var(--dim);
+      margin-bottom: 6px;
+    }
+    #node-panel .np-desc {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    #np-close {
+      position: absolute;
+      top: 8px; right: 10px;
+      cursor: pointer;
+      color: var(--dim);
+      font-size: 16px;
+      line-height: 1;
+    }
+    #np-close:hover { color: var(--text); }
+
+    /* ── 分隔線可拖拽 ─────────────────────────────────────────────── */
+    .resizer {
+      width: 4px;
+      background: var(--border);
+      cursor: col-resize;
+      flex-shrink: 0;
+      transition: background .2s;
+    }
+    .resizer:hover { background: var(--accent2); }
+  </style>
+</head>
+<body>
+
+<!-- ── 頂部標題 ──────────────────────────────────────────────────────── -->
+<div id="header">
+  <div>
+    <h1>meetGRAG</h1>
+    <div class="subtitle">GraphRAG 知識問答系統</div>
+  </div>
+  <div id="status-badge">
+    <div id="status-dot"></div>
+    <span id="status-text">連線中…</span>
+  </div>
+</div>
+
+<!-- ── 主體 ─────────────────────────────────────────────────────────── -->
+<div id="main">
+
+  <!-- 左側：對話 -->
+  <div id="chat-panel">
+    <div id="messages"></div>
+    <div id="input-area">
+      <textarea id="query-input" rows="1" placeholder="輸入問題，按 Enter 送出…"></textarea>
+      <button id="send-btn" title="送出">
+        <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="resizer" id="h-resizer"></div>
+
+  <!-- 右側：回答 + 子圖 -->
+  <div id="detail-panel">
+
+    <!-- 答案 & 引用 -->
+    <div id="answer-section">
+      <div class="section-header">
+        回答與引用來源
+        <span class="badge" id="cite-count">—</span>
+      </div>
+      <div id="answer-body">
+        <div class="answer-placeholder">送出問題後，回答與引用來源將顯示於此</div>
+      </div>
+    </div>
+
+    <!-- 相關子圖 -->
+    <div id="graph-section">
+      <div class="section-header">
+        相關知識子圖
+        <span id="node-count" class="badge">—</span>
+        <div id="graph-legend"></div>
+      </div>
+      <div id="graph-canvas">
+        <div class="graph-placeholder" id="graph-placeholder">送出問題後，相關實體子圖將顯示於此</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Tooltip -->
+<div id="tooltip"></div>
+
+<!-- 節點詳情彈窗 -->
+<div id="node-panel">
+  <span id="np-close">×</span>
+  <div class="np-name" id="np-name"></div>
+  <div class="np-type" id="np-type"></div>
+  <div class="np-desc" id="np-desc"></div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<script>
+const API = 'http://localhost:9000/api/v1';
+
+// ── 節點顏色 ──────────────────────────────────────────────────────────
+const TYPE_COLORS = {
+  PERSON:        '#f472b6',
+  ORGANIZATION:  '#fb923c',
+  WORKING_GROUP: '#facc15',
+  PROTOCOL:      '#34d399',
+  RFC:           '#38bdf8',
+  TECHNOLOGY:    '#a78bfa',
+  CONCEPT:       '#94a3b8',
+  UNKNOWN:       '#475569',
+};
+const COMM_PALETTE = [
+  '#6366f1','#ec4899','#14b8a6','#f59e0b',
+  '#84cc16','#06b6d4','#8b5cf6','#f43f5e',
+];
+
+// ── 全局狀態 ─────────────────────────────────────────────────────────
+let fullGraph = null;        // { nodes, links, communities }
+let simulation = null;       // D3 simulation
+let currentAnswer = null;    // QueryResponse
+let msgCount = 0;
+
+// ── 錯誤訊息友善化 ───────────────────────────────────────────────────
+function friendlyError(raw) {
+  if (!raw) return '發生未知錯誤，請稍後再試。';
+  const s = String(raw);
+
+  // Rate limit（429）
+  if (/rate.limit|429|tokens per day|TPD|too many request/i.test(s)) {
+    const wait = s.match(/try again in\s+([\d]+m[\d.]+s|[\d.]+s)/i);
+    return wait
+      ? `今日 API 用量已達上限，請約 ${wait[1]} 後再試。`
+      : '今日 API 用量已達上限，請稍後再試。';
+  }
+
+  // 連線失敗 / 伺服器未啟動
+  if (/failed to fetch|networkerror|connection refused|econnrefused/i.test(s)) {
+    return '無法連線至伺服器，請確認後端服務是否已啟動。';
+  }
+
+  // 逾時
+  if (/timeout|timed out/i.test(s)) {
+    return '請求逾時，請稍後再試。';
+  }
+
+  // 伺服器內部錯誤（502 / 503 / 500）
+  if (/502|503|500|internal server error/i.test(s)) {
+    return '伺服器暫時無法處理請求，請稍後再試。';
+  }
+
+  // 驗證 / 授權錯誤（401 / 403）
+  if (/401|403|unauthorized|forbidden/i.test(s)) {
+    return 'API 金鑰無效或權限不足，請檢查設定。';
+  }
+
+  // 預設：隱藏原始訊息，只顯示通用提示
+  return '回覆生成失敗，請稍後再試。';
+}
+
+// ── 健康檢查 ─────────────────────────────────────────────────────────
+async function checkHealth() {
+  const dot  = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  try {
+    const r = await fetch(`${API}/health`);
+    if (!r.ok) throw new Error();
+    const d = await r.json();
+    dot.className  = 'ok';
+    text.textContent = `就緒 · ${d.model}`;
+  } catch {
+    dot.className  = 'err';
+    text.textContent = '無法連線';
+  }
+}
+
+// ── 載入完整圖譜 ─────────────────────────────────────────────────────
+async function loadGraph() {
+  try {
+    const r = await fetch(`${API}/graph`);
+    fullGraph = await r.json();
+  } catch (e) {
+    console.warn('無法載入圖譜資料:', e);
+  }
+}
+
+// ── 訊息渲染 ─────────────────────────────────────────────────────────
+function now() {
+  return new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+}
+
+function appendUserMsg(text) {
+  const container = document.getElementById('messages');
+  const row = document.createElement('div');
+  row.className = 'msg-row user';
+  row.innerHTML = `
+    <div>
+      <div class="bubble user">${escHtml(text)}</div>
+      <div class="msg-meta">${now()}</div>
+    </div>
+    <div class="avatar user">我</div>
+  `;
+  container.appendChild(row);
+  scrollMsgs();
+  return row;
+}
+
+function appendTyping() {
+  const container = document.getElementById('messages');
+  const row = document.createElement('div');
+  row.className = 'msg-row bot';
+  row.id = 'typing-row';
+  row.innerHTML = `
+    <div class="avatar bot">G</div>
+    <div class="bubble bot">
+      <div class="typing-dots"><span></span><span></span><span></span></div>
+    </div>
+  `;
+  container.appendChild(row);
+  scrollMsgs();
+  return row;
+}
+
+function replaceTypingWithAnswer(resp, query) {
+  const row = document.getElementById('typing-row');
+  if (!row) return;
+  // 建立 chunk_id → citation index 對照
+  const idxMap = {};
+  resp.citations.forEach((c, i) => { idxMap[c.chunk_id] = i + 1; });
+
+  // 將 [REF:id] 替換為上標標籤
+  const formatted = resp.answer.replace(
+    /\[REF:([^\]]+)\]/g,
+    (_, id) => {
+      const n = idxMap[id.trim()];
+      return n
+        ? `<sup class="ref-tag" data-idx="${n}" title="引用 [${n}]">[${n}]</sup>`
+        : '';
+    }
+  );
+
+  const shortQ = query.length > 30 ? query.slice(0, 30) + '…' : query;
+  const fallbackNote = resp.is_fallback
+    ? '<div class="fallback">（未找到相關資料，此為備用回覆）</div>'
+    : '';
+
+  row.id = `msg-${++msgCount}`;
+  row.innerHTML = `
+    <div class="avatar bot">G</div>
+    <div>
+      <div class="bubble bot">${fallbackNote}${formatted}</div>
+      <div class="msg-meta">${now()} · ${resp.query_type} search</div>
+    </div>
+  `;
+  // 點擊引用標籤 → 在右側高亮對應引用卡片
+  row.querySelectorAll('.ref-tag').forEach(el => {
+    el.addEventListener('click', () => highlightCitation(parseInt(el.dataset.idx)));
+  });
+  scrollMsgs();
+}
+
+function scrollMsgs() {
+  const c = document.getElementById('messages');
+  c.scrollTop = c.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── 右側：渲染答案詳情 ────────────────────────────────────────────────
+function renderAnswer(resp) {
+  currentAnswer = resp;
+  const body = document.getElementById('answer-body');
+  document.getElementById('cite-count').textContent =
+    resp.citations.length ? `${resp.citations.length} 個引用` : '無引用';
+
+  const idxMap = {};
+  resp.citations.forEach((c, i) => { idxMap[c.chunk_id] = i + 1; });
+
+  const formattedAnswer = resp.answer.replace(
+    /\[REF:([^\]]+)\]/g,
+    (_, id) => {
+      const n = idxMap[id.trim()];
+      return n
+        ? `<sup class="ref-tag" data-idx="${n}" title="引用 [${n}]">[${n}]</sup>`
+        : '';
+    }
+  );
+
+  let citeHtml = '';
+  resp.citations.forEach((c, i) => {
+    const refs = c.source_refs.map(ref => `
+      <div class="source-ref">
+        <span class="video-name">${escHtml(ref.source_video || '—')}</span>
+        <button class="ts-btn" onclick="copyTs('${escHtml(ref.source_video)}', ${ref.start_time})"
+          title="複製時間戳">
+          ${fmtTs(ref.start_time)} – ${fmtTs(ref.end_time)}
+        </button>
+        ${ref.slide_image ? `<span style="color:var(--dim);font-size:10px">投影片可用</span>` : ''}
+      </div>
+    `).join('');
+
+    citeHtml += `
+      <div class="citation-card" id="cit-${i+1}" data-idx="${i+1}">
+        <div class="citation-title">
+          <span class="citation-num">${i+1}</span>
+          <span>${escHtml(c.title)}</span>
+          <span class="type-badge ${c.chunk_type}">${c.chunk_type === 'community' ? '社群' : '文字片段'}</span>
+        </div>
+        ${refs || '<div class="source-ref" style="color:var(--dim);font-size:11px">（社群摘要，無直接時間戳）</div>'}
+      </div>
+    `;
+  });
+
+  const usageHtml = resp.usage && Object.keys(resp.usage).length
+    ? `<div class="usage-row">
+        Tokens：<span>${resp.usage.prompt || 0}</span> prompt +
+        <span>${resp.usage.completion || 0}</span> completion
+       </div>`
+    : '';
+
+  body.innerHTML = `
+    <div class="answer-text" id="answer-full">${formattedAnswer}</div>
+    ${resp.citations.length ? `<div class="citations-list">${citeHtml}</div>` : ''}
+    ${usageHtml}
+  `;
+
+  // 引用標籤點擊事件
+  body.querySelectorAll('.ref-tag').forEach(el => {
+    el.addEventListener('click', () => highlightCitation(parseInt(el.dataset.idx)));
+  });
+
+  // 高亮第一個引用
+  if (resp.citations.length) highlightCitation(1);
+}
+
+function highlightCitation(idx) {
+  document.querySelectorAll('.citation-card').forEach(el => el.classList.remove('active'));
+  const card = document.getElementById(`cit-${idx}`);
+  if (card) {
+    card.classList.add('active');
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function fmtTs(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function copyTs(video, sec) {
+  const txt = `${video} @ ${fmtTs(sec)}`;
+  navigator.clipboard.writeText(txt).catch(() => {});
+  // 簡單 toast
+  const el = document.createElement('div');
+  el.style.cssText = `
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:#1e2235;border:1px solid var(--border2);
+    border-radius:6px;padding:6px 14px;font-size:12px;
+    color:var(--muted);z-index:9999;pointer-events:none;
+  `;
+  el.textContent = `已複製：${txt}`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1800);
+}
+
+// ── 子圖渲染 ─────────────────────────────────────────────────────────
+function buildSubgraph(resp) {
+  if (!fullGraph || !resp) return;
+
+  const placeholder = document.getElementById('graph-placeholder');
+
+  // ── Step 1：以後端回傳的精確實體名稱為核心（最可靠）──────────────────
+  //   cited_entity_names 由 organizer 在管線中計算，
+  //   精確對應被引用 chunk 裡的 EntitySnippet，無字串誤匹配問題。
+  const primaryNames = new Set(resp.cited_entity_names || []);
+
+  // ── Step 2：fallback — 若後端未回傳（舊版相容），以社群過濾補足 ────────
+  if (primaryNames.size === 0) {
+    const commSet = new Set(
+      resp.citations
+        .filter(c => c.chunk_type === 'community')
+        .map(c => c.chunk_id)
+    );
+    fullGraph.nodes.forEach(n => {
+      if (commSet.has(n.community_id)) primaryNames.add(n.id);
+    });
+  }
+
+  // ── Step 3：加入 1-hop 鄰居，豐富子圖脈絡（上限 50 個節點）───────────
+  const relevantNames = new Set(primaryNames);
+  fullGraph.links.forEach(l => {
+    if (primaryNames.has(l.source) && relevantNames.size < 50) relevantNames.add(l.target);
+    if (primaryNames.has(l.target) && relevantNames.size < 50) relevantNames.add(l.source);
+  });
+
+  // ── Step 4：若完全沒有結果，回退到全圖 Top-40 高 degree 節點 ──────────
+  if (relevantNames.size === 0) {
+    const degMap = {};
+    fullGraph.links.forEach(l => {
+      degMap[l.source] = (degMap[l.source] || 0) + 1;
+      degMap[l.target] = (degMap[l.target] || 0) + 1;
+    });
+    fullGraph.nodes
+      .sort((a, b) => (degMap[b.id] || 0) - (degMap[a.id] || 0))
+      .slice(0, 40)
+      .forEach(n => relevantNames.add(n.id));
+  }
+
+  // 過濾節點與邊
+  const nodes = fullGraph.nodes
+    .filter(n => relevantNames.has(n.id))
+    .map(n => ({ ...n }));
+
+  const nameSet = new Set(nodes.map(n => n.id));
+  const links = fullGraph.links
+    .filter(l => nameSet.has(l.source) && nameSet.has(l.target))
+    .map(l => ({ ...l }));
+
+  // 更新節點計數
+  document.getElementById('node-count').textContent =
+    `${nodes.length} 節點 · ${links.length} 邊`;
+
+  if (placeholder) placeholder.style.display = 'none';
+
+  // 計算社群顏色表
+  const commIds = [...new Set(nodes.map(n => n.community_id).filter(Boolean))];
+  const commColorMap = {};
+  commIds.forEach((id, i) => { commColorMap[id] = COMM_PALETTE[i % COMM_PALETTE.length]; });
+
+  // 引用的社群 → 高亮
+  const citedComms = new Set(
+    resp.citations.filter(c => c.chunk_type === 'community').map(c => c.chunk_id)
+  );
+
+  renderD3(nodes, links, commColorMap, primaryNames, citedComms);
+  renderLegend(nodes);
+}
+
+function renderLegend(nodes) {
+  const types = [...new Set(nodes.map(n => n.type))];
+  const leg = document.getElementById('graph-legend');
+  leg.innerHTML = types.map(t => `
+    <div class="legend-item">
+      <div class="legend-dot" style="background:${TYPE_COLORS[t] || TYPE_COLORS.UNKNOWN}"></div>
+      ${t}
+    </div>
+  `).join('');
+}
+
+function renderD3(nodes, links, commColorMap, primarySet, citedComms) {
+  const canvas = document.getElementById('graph-canvas');
+  // 清除舊 SVG
+  d3.select(canvas).selectAll('svg').remove();
+  if (simulation) { simulation.stop(); simulation = null; }
+
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+
+  const svg = d3.select(canvas).append('svg')
+    .attr('width', W).attr('height', H);
+
+  const g = svg.append('g');
+
+  // 縮放
+  svg.call(
+    d3.zoom().scaleExtent([.3, 4])
+      .on('zoom', e => g.attr('transform', e.transform))
+  );
+
+  // 箭頭標記
+  svg.append('defs').append('marker')
+    .attr('id', 'arrow')
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 20).attr('refY', 0)
+    .attr('markerWidth', 6).attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+      .attr('d', 'M0,-5L10,0L0,5')
+      .attr('fill', '#3d4268');
+
+  // 建立 degree map
+  const degMap = {};
+  links.forEach(l => {
+    degMap[l.source] = (degMap[l.source] || 0) + 1;
+    degMap[l.target] = (degMap[l.target] || 0) + 1;
+  });
+
+  // 邊
+  const link = g.append('g').selectAll('line')
+    .data(links).join('line')
+      .attr('stroke', '#2d3148')
+      .attr('stroke-width', d => Math.max(1, Math.sqrt(d.weight || 1) * 1.2))
+      .attr('stroke-opacity', .7)
+      .attr('marker-end', 'url(#arrow)');
+
+  // 節點群組
+  const node = g.append('g').selectAll('g')
+    .data(nodes).join('g')
+      .attr('cursor', 'pointer')
+      .call(
+        d3.drag()
+          .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(.3).restart(); d.fx = d.x; d.fy = d.y; })
+          .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+          .on('end',   (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+      );
+
+  // 節點外圈（社群顏色）
+  node.append('circle')
+    .attr('r', d => nodeRadius(d, degMap) + 3)
+    .attr('fill', 'none')
+    .attr('stroke', d => {
+      const cc = commColorMap[d.community_id];
+      return cc || 'transparent';
+    })
+    .attr('stroke-width', d => citedComms.has(d.community_id) ? 2.5 : 1.5)
+    .attr('stroke-opacity', .7);
+
+  // 節點內圈
+  node.append('circle')
+    .attr('r', d => nodeRadius(d, degMap))
+    .attr('fill', d => TYPE_COLORS[d.type] || TYPE_COLORS.UNKNOWN)
+    .attr('stroke', d => primarySet.has(d.id) ? '#fff' : 'none')
+    .attr('stroke-width', d => primarySet.has(d.id) ? 1.5 : 0)
+    .attr('fill-opacity', d => primarySet.has(d.id) ? 1 : .65);
+
+  // 標籤
+  const label = node.append('text')
+    .text(d => d.id)
+    .attr('x', d => nodeRadius(d, degMap) + 4)
+    .attr('y', '.35em')
+    .attr('font-size', d => primarySet.has(d.id) ? 11 : 10)
+    .attr('fill', d => primarySet.has(d.id) ? '#e2e8f0' : '#94a3b8')
+    .attr('font-weight', d => primarySet.has(d.id) ? '600' : '400')
+    .attr('pointer-events', 'none');
+
+  // Tooltip
+  const tooltip = document.getElementById('tooltip');
+  node
+    .on('mouseenter', (e, d) => {
+      tooltip.innerHTML = `
+        <div class="tt-name">${escHtml(d.id)}</div>
+        <div class="tt-type">${d.type}</div>
+        ${d.description ? `<div class="tt-desc">${escHtml(d.description.slice(0, 120))}${d.description.length > 120 ? '…' : ''}</div>` : ''}
+      `;
+      tooltip.classList.add('show');
+      moveTooltip(e);
+    })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', () => tooltip.classList.remove('show'))
+    .on('click', (e, d) => {
+      e.stopPropagation();
+      showNodePanel(d);
+      // 高亮點擊節點與鄰居
+      const neighbors = new Set([d.id]);
+      links.forEach(l => {
+        if (l.source.id === d.id || l.source === d.id) neighbors.add(typeof l.target === 'object' ? l.target.id : l.target);
+        if (l.target.id === d.id || l.target === d.id) neighbors.add(typeof l.source === 'object' ? l.source.id : l.source);
+      });
+      node.selectAll('circle:last-of-type')
+        .attr('fill-opacity', n => neighbors.has(n.id) ? 1 : .2);
+      label.attr('fill-opacity', n => neighbors.has(n.id) ? 1 : .2);
+      link.attr('stroke-opacity', l => {
+        const s = typeof l.source === 'object' ? l.source.id : l.source;
+        const t = typeof l.target === 'object' ? l.target.id : l.target;
+        return (s === d.id || t === d.id) ? .9 : .1;
+      });
+    });
+
+  svg.on('click', () => {
+    node.selectAll('circle:last-of-type').attr('fill-opacity', d => primarySet.has(d.id) ? 1 : .65);
+    label.attr('fill-opacity', 1);
+    link.attr('stroke-opacity', .7);
+    document.getElementById('node-panel').classList.remove('show');
+  });
+
+  // 邊 Tooltip
+  link
+    .on('mouseenter', (e, d) => {
+      const s = typeof d.source === 'object' ? d.source.id : d.source;
+      const t = typeof d.target === 'object' ? d.target.id : d.target;
+      tooltip.innerHTML = `
+        <div class="tt-name">${escHtml(s)} → ${escHtml(t)}</div>
+        ${d.description ? `<div class="tt-desc">${escHtml(d.description.slice(0, 100))}…</div>` : ''}
+      `;
+      tooltip.classList.add('show');
+      moveTooltip(e);
+    })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', () => tooltip.classList.remove('show'));
+
+  // 力導向模擬
+  simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(80))
+    .force('charge', d3.forceManyBody().strength(-200))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collide', d3.forceCollide().radius(d => nodeRadius(d, degMap) + 10))
+    .on('tick', () => {
+      link
+        .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+      node.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+}
+
+function nodeRadius(d, degMap) {
+  return 6 + Math.sqrt(degMap[d.id] || 1) * 2.5;
+}
+
+function moveTooltip(e) {
+  const t = document.getElementById('tooltip');
+  const pad = 12;
+  let x = e.clientX + pad;
+  let y = e.clientY + pad;
+  if (x + 290 > window.innerWidth) x = e.clientX - 290 - pad;
+  if (y + 120 > window.innerHeight) y = e.clientY - 120 - pad;
+  t.style.left = x + 'px';
+  t.style.top  = y + 'px';
+}
+
+function showNodePanel(d) {
+  const p = document.getElementById('node-panel');
+  document.getElementById('np-name').textContent = d.id;
+  document.getElementById('np-type').textContent = d.type + (d.community_id ? ` · 社群 ${d.community_id.slice(0,8)}…` : '');
+  document.getElementById('np-desc').textContent = d.description || '（無描述）';
+  p.classList.add('show');
+}
+document.getElementById('np-close').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('node-panel').classList.remove('show');
+});
+
+// ── 送出查詢 ─────────────────────────────────────────────────────────
+async function sendQuery() {
+  const input  = document.getElementById('query-input');
+  const sendBtn = document.getElementById('send-btn');
+  const query  = input.value.trim();
+  if (!query) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  sendBtn.disabled = true;
+
+  appendUserMsg(query);
+  const typingRow = appendTyping();
+
+  try {
+    const r = await fetch(`${API}/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, top_k: 5, score_cutoff: -0.5, max_chunks: 5 }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || `HTTP ${r.status}`);
+    }
+    const resp = await r.json();
+
+    replaceTypingWithAnswer(resp, query);
+    renderAnswer(resp);
+    buildSubgraph(resp);
+
+  } catch (e) {
+    const row = document.getElementById('typing-row');
+    if (row) {
+      row.id = `msg-${++msgCount}`;
+      row.innerHTML = `
+        <div class="avatar bot">G</div>
+        <div class="bubble bot" style="color:var(--danger)">
+          ${escHtml(friendlyError(e.message))}
+        </div>
+      `;
+    }
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+// ── 輸入框自動調整高度 + Enter 送出 ──────────────────────────────────
+const input = document.getElementById('query-input');
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+});
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendQuery();
+  }
+});
+document.getElementById('send-btn').addEventListener('click', sendQuery);
+
+// ── 節點詳情關閉 ──────────────────────────────────────────────────────
+document.getElementById('graph-canvas').addEventListener('click', () => {
+  document.getElementById('node-panel').classList.remove('show');
+});
+
+// ── 水平分隔線拖拽 ────────────────────────────────────────────────────
+(function setupResizer() {
+  const resizer  = document.getElementById('h-resizer');
+  const chat     = document.getElementById('chat-panel');
+  let dragging = false, startX = 0, startW = 0;
+  resizer.addEventListener('mousedown', e => {
+    dragging = true;
+    startX   = e.clientX;
+    startW   = chat.offsetWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const w = Math.max(220, Math.min(600, startW + e.clientX - startX));
+    chat.style.width = w + 'px';
+  });
+  document.addEventListener('mouseup', () => {
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
+
+// ── 初始化 ────────────────────────────────────────────────────────────
+checkHealth();
+loadGraph();
+
+// 歡迎訊息
+(function() {
+  const container = document.getElementById('messages');
+  const row = document.createElement('div');
+  row.className = 'msg-row bot';
+  row.innerHTML = `
+    <div class="avatar bot">G</div>
+    <div>
+      <div class="bubble bot">
+        您好！我是 meetGRAG 知識問答助理。<br>
+        我可以回答關於 IETF 會議、工作組討論、通訊協定等問題，<br>
+        並提供可溯源的影片時間戳引用。<br><br>
+        <span style="color:var(--dim);font-size:12px">範例：「ADD 工作組的主席是誰？」</span>
+      </div>
+      <div class="msg-meta">${now()}</div>
+    </div>
+  `;
+  container.appendChild(row);
+})();
+</script>
+</body>
+</html>
