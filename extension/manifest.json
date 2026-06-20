@@ -1,0 +1,34 @@
+{
+    "manifest_version": 3,
+    "name": "GRASP",
+    "version": "1.0",
+    "description": "Graph-based Retrieval And Source-traceable Platform",
+    "permissions": [
+        "sidePanel",
+        "activeTab",
+        "scripting",
+        "tabs"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_title": "開啟 IETF 助理"
+    },
+    "side_panel": {
+        "default_path": "sidepanel.html"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "content.js"
+            ]
+        }
+    ]
+}
