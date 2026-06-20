@@ -1,0 +1,32 @@
+# GraphRAG 索引管線設定
+# 修改後重新執行 indexer.py 即可生效
+
+llm:
+  provider: groq          # openai | groq | ollama
+  model: groq/compound-mini        # 實體擷取 + 社群報告使用的模型 gpt-4o-mini | openai/gpt-oss-120b llama-3.3-70b-versatile meta-llama/llama-4-scout-17b-16e-instruct openai/gpt-oss-20b 
+  # api_key 從 .env 的 OPENAPI_API_KEY 讀取（由 indexer 外部注入）
+  # 若使用 Ollama，改為：
+  # provider: ollama
+  # model: mistral
+  # base_url: http://localhost:11434/v1
+
+embeddings:
+  provider: openai                 # openai | ollama（省略時繼承 llm.provider）
+  model: text-embedding-3-small   # OpenAI embedding 模型
+  # Ollama embedding：
+  # provider: ollama
+  # model: nomic-embed-text
+  # base_url: http://localhost:11434
+
+chunking:
+  size: 600        # 每個 TextUnit 的最大 token 數（粗估）
+  overlap: 100     # 相鄰 chunk 的重疊 token 數
+
+storage:
+  neo4j_uri:      bolt://localhost:7687
+  neo4j_user:     neo4j
+  neo4j_password: password
+  lancedb_path:   ./qa_Module/graphrag/lancedb
+
+community:
+  resolution: 1.0   # Louvain resolution 參數（越高 → 社群越小）
