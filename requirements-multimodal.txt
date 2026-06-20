@@ -1,0 +1,11 @@
+# Optional dependencies for YouTube multimodal ingestion.
+# Install these only on the machine that will run /api/v1/analyze-youtube.
+yt-dlp
+opencv-python
+scikit-image
+numpy
+faster-whisper
+transformers
+qwen-vl-utils
+accelerate
+torch
