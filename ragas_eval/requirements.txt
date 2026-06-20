@@ -1,0 +1,22 @@
+# ragas_eval 虛擬環境相依套件
+# 安裝方式：
+#   python -m venv .venv
+#   .venv\Scripts\activate
+#   pip install -r ragas_eval/requirements.txt
+
+# ── RAGAS 核心 ────────────────────────────────────────────────────────────────
+ragas==0.2.15
+
+# ── LangChain 整合（RAGAS 需要） ──────────────────────────────────────────────
+langchain>=0.3.0
+langchain-core>=0.3.0
+
+# ── LLM Provider（擇一，預設支援 Groq 與 OpenAI） ────────────────────────────
+langchain-groq>=0.2.0         # 使用 Groq（免費，速度快）
+langchain-openai>=0.2.0       # 使用 OpenAI（answer_relevancy / correctness 需要 embeddings）
+
+# ── 環境變數管理 ──────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0
+
+# ── 資料處理 ──────────────────────────────────────────────────────────────────
+pandas>=2.0.0
