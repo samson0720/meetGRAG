@@ -1,0 +1,86 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "created_at": "2026-04-06T00:00:00+00:00",
+    "source_videos": [
+      "IETF 125_ IAB Open.mp4",
+      "IETF118_ADD_session.mp4"
+    ],
+    "description": "meetGRAG 範例測試集：涵蓋 local/global 查詢，用於驗證評估框架",
+    "total_cases": 6
+  },
+  "test_cases": [
+    {
+      "id": "sample_001",
+      "query": "What is the main topic discussed in the IETF ADD working group session?",
+      "query_type": "global",
+      "expected_answer": "The IETF ADD (Adaptive DNS Discovery) working group session discusses mechanisms for discovering and selecting DNS resolvers in various network environments, including encrypted DNS protocols and their deployment.",
+      "expected_chunks": [],
+      "relevant_source_videos": ["IETF118_ADD_session.mp4"],
+      "ground_truth_entities": ["ADD", "DNS", "IETF"],
+      "tags": ["global", "overview", "easy"],
+      "difficulty": "easy",
+      "notes": "Global query, should be answered via community search"
+    },
+    {
+      "id": "sample_002",
+      "query": "What protocols are being discussed for encrypted DNS in the IETF meetings?",
+      "query_type": "local",
+      "expected_answer": "The IETF meetings discuss DNS over HTTPS (DoH) and DNS over TLS (DoT) as encrypted DNS protocols, along with DNS over QUIC (DoQ).",
+      "expected_chunks": [],
+      "relevant_source_videos": ["IETF118_ADD_session.mp4"],
+      "ground_truth_entities": ["DoH", "DoT", "DoQ", "DNS over HTTPS", "DNS over TLS"],
+      "tags": ["local", "protocol", "medium"],
+      "difficulty": "medium",
+      "notes": "Local query about specific protocols"
+    },
+    {
+      "id": "sample_003",
+      "query": "What topics were covered in the IAB Open meeting?",
+      "query_type": "global",
+      "expected_answer": "The IAB Open meeting covered various topics related to Internet architecture, including technical discussions and presentations from different working groups.",
+      "expected_chunks": [],
+      "relevant_source_videos": ["IETF 125_ IAB Open.mp4"],
+      "ground_truth_entities": ["IAB", "IETF"],
+      "tags": ["global", "overview", "easy"],
+      "difficulty": "easy",
+      "notes": "Global query about IAB meeting content"
+    },
+    {
+      "id": "sample_004",
+      "query": "What is DNS over HTTPS and how does it work?",
+      "query_type": "local",
+      "expected_answer": "DNS over HTTPS (DoH) is a protocol that performs DNS resolution over HTTPS, encrypting DNS queries to improve privacy and security by preventing eavesdropping.",
+      "expected_chunks": [],
+      "relevant_source_videos": ["IETF118_ADD_session.mp4"],
+      "ground_truth_entities": ["DoH", "DNS over HTTPS", "HTTPS"],
+      "tags": ["local", "protocol", "technical", "medium"],
+      "difficulty": "medium",
+      "notes": "Factual query about DoH protocol"
+    },
+    {
+      "id": "sample_005",
+      "query": "What are all the working groups mentioned across the IETF meetings?",
+      "query_type": "global",
+      "expected_answer": "The IETF meetings mention several working groups including ADD (Adaptive DNS Discovery), IAB (Internet Architecture Board), and various other technical groups.",
+      "expected_chunks": [],
+      "relevant_source_videos": ["IETF118_ADD_session.mp4", "IETF 125_ IAB Open.mp4"],
+      "ground_truth_entities": ["ADD", "IAB", "IETF"],
+      "tags": ["global", "comparative", "hard"],
+      "difficulty": "hard",
+      "notes": "Hard global query requiring cross-video synthesis"
+    },
+    {
+      "id": "sample_006",
+      "query": "Summarize the key decisions or outcomes from the IETF ADD session.",
+      "query_type": "global",
+      "expected_answer": "The IETF ADD session resulted in discussions about standardizing encrypted DNS discovery mechanisms and making progress on relevant specifications.",
+      "expected_chunks": [],
+      "relevant_source_videos": ["IETF118_ADD_session.mp4"],
+      "ground_truth_entities": ["ADD", "DNS"],
+      "tags": ["global", "summary", "medium"],
+      "difficulty": "medium",
+      "notes": "Global summary query"
+    }
+  ]
+}
