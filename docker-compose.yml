@@ -1,0 +1,35 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./database:/app/database
+      - ./qa_Module/graphrag/input:/app/qa_Module/graphrag/input
+      - ./qa_Module/graphrag/output:/app/qa_Module/graphrag/output
+      - ./qa_Module/graphrag/lancedb:/app/qa_Module/graphrag/lancedb
+    restart: unless-stopped
+
+  jobs:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.jobs
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./database:/app/database
+      - ./qa_Module/graphrag/input:/app/qa_Module/graphrag/input
+      - ./qa_Module/graphrag/output:/app/qa_Module/graphrag/output
+      - ./qa_Module/graphrag/lancedb:/app/qa_Module/graphrag/lancedb
+      - hf-cache:/root/.cache/huggingface
+    profiles:
+      - jobs
+
+volumes:
+  hf-cache:

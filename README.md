@@ -13,6 +13,7 @@ meetGRAG 結合多模態資料對齊、GraphRAG 知識圖譜與 Chrome 瀏覽器
 - [系統架構](#系統架構)
 - [目錄結構](#目錄結構)
 - [快速開始](#快速開始)
+- [Docker 部署](#docker-部署)
 - [詳細安裝說明](#詳細安裝說明)
 - [設定說明](#設定說明)
 - [API 參考](#api-參考)
@@ -205,6 +206,74 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
+## Docker 部署
+
+專案提供兩個 Docker 服務：
+
+| 服務 | 用途 |
+|------|------|
+| `api` | 常駐 FastAPI 查詢服務，對外提供 `http://localhost:9000/api/v1` |
+| `jobs` | 手動執行 GraphRAG 索引、多模態 YouTube 分析與評估任務 |
+
+### 1. 準備環境變數
+
+```bash
+cp .env.example .env
+# 編輯 .env，填入 OPENAPI_API_KEY / OPENAI_API_KEY / GROQ_API_KEY
+```
+
+### 2. 建置映像檔
+
+`jobs` 映像檔會安裝 PyTorch、Whisper、Transformers、Ragas 等重型套件。建置前請確認 Docker Desktop 使用的磁碟至少有 15-20 GB 可用空間；Windows 預設通常會用 C 槽的 `AppData\Local\Docker\wsl\disk\docker_data.vhdx`。
+
+```bash
+docker compose build api
+docker compose build jobs
+```
+
+### 3. 啟動 API
+
+```bash
+docker compose up api
+```
+
+啟動後可開啟：
+
+- API health check：`http://localhost:9000/api/v1/health`
+- OpenAPI 文件：`http://localhost:9000/docs`
+
+### 4. 執行批次任務
+
+```bash
+# 建立或更新 GraphRAG 索引
+docker compose run --rm jobs python -m qa_Module.graphrag.run_index
+
+# 分析 YouTube 影片並輸出 meetGRAG JSON
+docker compose run --rm jobs python -m qa_Module.multimodal.run_youtube_analysis \
+  "https://www.youtube.com/watch?v=xxxxx" \
+  --meeting-name "IETF 125_ IAB Open" \
+  --auto-index
+
+# 執行自訂評估
+docker compose run --rm jobs python -m eval.run_eval
+
+# 執行 Ragas 評估
+docker compose run --rm jobs python ragas_eval/run_ragas_eval.py
+```
+
+Docker 會掛載並共用以下資料目錄：
+
+- `database/`
+- `qa_Module/graphrag/input/`
+- `qa_Module/graphrag/output/`
+- `qa_Module/graphrag/lancedb/`
+
+Chrome Extension 目前預設呼叫 `http://localhost:9000/api/v1`，因此 Docker 模式不需要修改 `extension/sidepanel.js`。
+
+> 注意：`api` 映像檔刻意不安裝 `torch`、`transformers`、Whisper 等重型多模態套件；YouTube 分析請使用 `jobs` container 執行。`jobs` 預設使用 CPU-only PyTorch wheel，若要使用 GPU，需另外改成 CUDA base image 與 NVIDIA Container Toolkit。
+
+---
+
 ## 詳細安裝說明
 
 ### Step 1：建立 Python 環境
@@ -278,9 +347,9 @@ uvicorn app:app --host 127.0.0.1 --port 9000 --reload
 1. 開啟 Chrome，前往 `chrome://extensions/`
 2. 啟用右上角**「開發者模式」**
 3. 點擊**「載入未封裝的擴充功能」**，選取本專案的 `extension/` 資料夾
-4. 在 `extension/sidepanel.js` 第一行確認 `API_BASE_URL` 設定正確：
+4. 在 `extension/sidepanel.js` 第一行確認 `API_BASE` 設定正確：
    ```javascript
-   const API_BASE_URL = "http://localhost:8000";  // 修改為實際後端位址
+   const API_BASE = "http://localhost:9000/api/v1";  // Docker 預設位址
    ```
 
 ### Step 6：驗證安裝
@@ -572,7 +641,7 @@ llm:
 2. 點擊**「載入未封裝的擴充功能」**，選取 `extension/` 資料夾
 3. 設定後端位址（`extension/sidepanel.js` 第一行）：
    ```javascript
-   const API_BASE_URL = "http://localhost:8000";
+   const API_BASE = "http://localhost:9000/api/v1";
    ```
 
 ### 使用方式
@@ -669,9 +738,10 @@ python ragas_eval/run_ragas_eval.py \
 | **LLM（推論）** | Groq Cloud / OpenAI / Ollama | 實體擷取、社群報告、問答生成 |
 | **Embedding** | OpenAI `text-embedding-3-small` | 文字向量化 |
 | **多模態前處理** | Phi-3.5-Vision + Whisper | OCR/圖表分析 + 語音辨識 |
-| **圖演算法** | NetworkX + scikit-network | 圖建構與社群偵測 |
+| **圖演算法** | NetworkX + python-louvain | 圖建構與社群偵測 |
 | **Chrome Extension** | Manifest V3 Side Panel API | 瀏覽器前端問答介面 |
 | **評估** | Ragas | GraphRAG 管線品質量化評估 |
+| **部署** | Docker Compose | 分離常駐 API 與批次 jobs container |
 
 ---
 
@@ -698,7 +768,7 @@ python ragas_eval/run_ragas_eval.py \
 
 **Q：Click-to-seek 為何沒有反應？**
 
-1. 確認已安裝 Extension 且 `API_BASE_URL` 設定正確
+1. 確認已安裝 Extension 且 `API_BASE` 設定正確
 2. 確認目前頁面的影片為 `<video>` 元素（不支援嵌入式 iframe 播放器）
 3. 檢查 `chrome://extensions/` 中 GRASP 的 Content Script 是否已注入（頁面重新整理後生效）
 

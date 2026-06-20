@@ -1,0 +1,28 @@
+FROM python:3.10-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential \
+       ffmpeg \
+       git \
+       libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements ./requirements
+RUN pip install --no-cache-dir -r requirements/jobs.txt
+
+COPY app.py ./
+COPY prompts ./prompts
+COPY qa_Module ./qa_Module
+COPY eval ./eval
+COPY ragas_eval ./ragas_eval
+COPY frontend ./frontend
+COPY .env.example ./
+
+CMD ["python", "-m", "qa_Module.graphrag.run_index"]
